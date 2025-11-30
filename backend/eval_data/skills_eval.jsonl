@@ -1,0 +1,6 @@
+/*
+example data
+*/
+{"id": 1, "text": "Skills\nPython, Machine Learning, Deep Learning, Data Analysis, SQL", "gold_skills": ["Python", "Machine Learning", "Deep Learning", "Data Analysis", "SQL"]}
+{"id": 2, "text": "Technical Skills\nJava, Spring Boot, Docker, Kubernetes, AWS", "gold_skills": ["Java", "Spring Boot", "Docker", "Kubernetes", "AWS"]}
+{"id": 3, "text": "Core competencies: project management, communication, leadership, stakeholder management.", "gold_skills": ["project management", "communication", "leadership", "stakeholder management"]}

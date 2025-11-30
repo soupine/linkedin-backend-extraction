@@ -4,3 +4,7 @@ spacy~=3.7
 dateparser~=1.2
 rapidfuzz~=3.9
 pytest~=8.0
+transformers~=4.45
+torch~=2.4
+Pillow~=10.4
+numpy~=1.26
