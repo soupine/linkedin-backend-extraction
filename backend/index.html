@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>LinkedIn Profile Extractor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">LinkedIn Profile Extractor</div>
+    <div id="health" class="pill pill-warn">checking…</div>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <h2>Upload LinkedIn PDF/HTML</h2>
+      <p class="muted">We never scrape URLs — upload your own profile export (PDF or saved HTML).</p>
+
+      <div id="dropzone" class="dropzone" tabindex="0" aria-label="File dropzone">
+        <input id="fileInput" type="file" accept=".pdf,.html,.htm" hidden />
+        <div class="dz-icon">📄</div>
+        <div class="dz-text">
+          <strong>Drag & drop</strong> a file here, or
+          <button id="browseBtn" type="button" class="btn btn-primary">Browse</button>
+          <div class="hint">Accepted: .pdf, .html (max 10 MB)</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="uploadBtn" class="btn" disabled>Upload & Extract</button>
+        <button id="clearBtn" class="btn btn-ghost">Clear</button>
+      </div>
+
+      <div class="progress" id="progress" hidden>
+        <div id="bar" class="bar" style="width: 0%"></div>
+      </div>
+
+      <div id="error" class="error" role="alert" hidden></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Result</h2>
+        <div class="spacer"></div>
+        <button id="downloadBtn" class="btn" disabled>Download JSON</button>
+      </div>
+      <pre id="output" class="codeblock" aria-live="polite" aria-busy="false">{}</pre>
+    </section>
+    
+
+    <!-- Panel: AI NLP Feedback -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>AI Feedback (Text)</h2>
+      </div>
+      <pre id="feedbackOutput" class="codeblock" aria-live="polite" aria-busy="false">
+No feedback yet. Upload a profile to see analysis.
+      </pre>
+    </section>
+
+    <!-- Panel: Profile Photo Quality -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Profile Photo Quality</h2>
+      </div>
+      <pre id="photoOutput" class="codeblock" aria-live="polite" aria-busy="false">
+No photo feedback yet. If the PDF contains a profile photo, scores will appear here.
+      </pre>
+    </section>
+  </main>
+  
+
+  <footer class="footer">
+    <small>Prototype • Phase 3</small>
+  </footer>
+
+  <script src="./script.js"></script>
+</body>
+</html>

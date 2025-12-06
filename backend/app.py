@@ -1,59 +1,108 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import pdfplumber
 import re
+
 from extractor import extract_structured_profile
 from feedback import build_profile_feedback
 from image_quality import analyze_profile_photo
-from PIL import Image
 
-app = Flask(__name__)
+# --------------------------------------------------------------------
+# Flask app: serve frontend + API
+# --------------------------------------------------------------------
+# static_folder='.' -> sirve index.html, script.js, style.css del mismo directorio
+app = Flask(__name__, static_folder='.', static_url_path='')
 
-# extraction PDF ------------------
 
-def extract_text_and_photo_from_pdf(file):
+# ---------------- Frontend route ----------------
+@app.route("/")
+def index():
+    # Sirve el index.html de la misma carpeta donde está app.py
+    return send_from_directory('.', 'index.html')
+
+
+# --------------------------------------------------------------------
+# Helper: robust text + photo extractor for PDF/HTML uploads
+# --------------------------------------------------------------------
+def extract_text_and_photo_from_upload(file_storage):
     """
-    Extract plain text and the first embedded image (assumed to be the profile photo)
-    from a LinkedIn PDF export.
+    Detect if the uploaded file is a real PDF.
+    - If it is, use pdfplumber to extract text and the first image.
+    - If not, treat it as plain text / HTML and return text only.
 
     Returns:
         text (str), photo (PIL.Image.Image or None)
+
+    Raises:
+        ValueError for invalid/corrupt PDFs or unreadable content.
     """
+    # Leer primeros bytes para ver si realmente es un PDF
+    head = file_storage.read(5)
+    file_storage.seek(0)
+
+    is_pdf = head.startswith(b"%PDF-")
+
+    # -------- CASE A: NO ES PDF REAL (HTML / TXT / otra cosa) --------
+    if not is_pdf:
+        raw = file_storage.read()
+        file_storage.seek(0)
+
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1", errors="ignore")
+
+        # Si parece HTML, limpiar etiquetas básicas
+        if "<html" in text.lower():
+            text = re.sub(r"<[^>]+>", " ", text)
+
+        return text, None
+
+    # -------------------- CASE B: SÍ ES PDF --------------------------
     text = ""
     first_photo = None
 
-    with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            # ---- Extract text ----
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n\n"
+    try:
+        with pdfplumber.open(file_storage) as pdf:
+            for page in pdf.pages:
+                # ---- Texto ----
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n\n"
 
-            # ---- Extract first image as profile photo ----
-            if first_photo is None and page.images:
-                img_info = page.images[0]
-                bbox = (img_info["x0"], img_info["top"], img_info["x1"], img_info["bottom"])
-                try:
-                    # Crop the page to the image bounding box and render it as a PIL image
-                    cropped_page = page.crop(bbox)
-                    page_image = cropped_page.to_image(resolution=150)
-                    first_photo = page_image.original  # this is a PIL.Image
-                except Exception:
-                    # If anything goes wrong, we just skip image extraction
-                    first_photo = None
+                # ---- Primera imagen como foto de perfil ----
+                if first_photo is None and page.images:
+                    img_info = page.images[0]
+                    bbox = (
+                        img_info["x0"],
+                        img_info["top"],
+                        img_info["x1"],
+                        img_info["bottom"],
+                    )
+                    try:
+                        cropped_page = page.crop(bbox)
+                        page_image = cropped_page.to_image(resolution=150)
+                        first_photo = page_image.original  # PIL.Image
+                    except Exception:
+                        first_photo = None
+    except Exception as e:
+        # Cualquier problema leyendo el PDF -> lo convertimos en error controlado
+        raise ValueError("Invalid or unreadable PDF") from e
 
+    file_storage.seek(0)
     return text, first_photo
 
 
-def extract_text_from_pdf(file):
+def extract_text_from_pdf(file_storage):
     """
-    Backwards-compatible helper, so I dont have to change everything
+    Backwards-compatible helper, so other modules can still call this.
     """
-    text, _ = extract_text_and_photo_from_pdf(file)
+    text, _ = extract_text_and_photo_from_upload(file_storage)
     return text
 
 
-# endpoint ------------------
-
+# --------------------------------------------------------------------
+# API endpoints
+# --------------------------------------------------------------------
 @app.route("/upload", methods=["POST"])
 def upload_file():
     if "file" not in request.files:
@@ -63,8 +112,17 @@ def upload_file():
     if file.filename == "":
         return jsonify({"error": "No selected file"}), 400
 
-    # Extract text + profile photo from the PDF
-    text, photo = extract_text_and_photo_from_pdf(file)
+    # Extract text + profile photo (PDF or HTML)
+    try:
+        text, photo = extract_text_and_photo_from_upload(file)
+    except ValueError as e:
+        # Error controlado: PDF corrupto o no legible
+        return jsonify({
+            "status": "error",
+            "message": "Could not read this file. "
+                       "Make sure it is a valid LinkedIn PDF export or HTML file.",
+            "details": str(e),
+        }), 400
 
     # Structured profile from extractor
     structured_data = extract_structured_profile(text)
@@ -78,15 +136,14 @@ def upload_file():
         try:
             photo_feedback = analyze_profile_photo(photo)
         except Exception:
-            # In case anything goes wrong, do not break the whole endpoint
             photo_feedback = None
 
     return jsonify({
         "status": "success",
         "source": file.filename,
         "profile": structured_data,
-        "feedback": feedback,           # NLP feedback (summary/experience/skills)
-        "photo_feedback": photo_feedback  # image quality scores or null
+        "feedback": feedback,
+        "photo_feedback": photo_feedback
     })
 
 
@@ -95,13 +152,14 @@ def health():
     return jsonify({"status": "ok", "message": "LinkedIn backend running"})
 
 
-"""
- --- Test ---
-"""
 @app.route("/debug/extract-text", methods=["POST"])
 def debug_extract_text():
     """
-    JSON-Body: { "text": "Summary\nResults-driven Machine Learning Engineer with 4+ years of experience in NLP and Computer Vision.\n\nExperience\nMachine Learning Engineer at OpenAI (Jan 2021 - Present)\nWorking on large-scale natural language processing models using PyTorch and spaCy.\n\nData Scientist at Acme Corp (Jun 2018 - Dec 2020)\nDeveloped predictive analytics solutions and data pipelines using Python and SQL.\n\nEducation\nTechnical University of Munich – M.Sc., Computer Science (2016–2018)\nUniversity of Cologne – B.Sc., Data Science (2013–2016)\n\nSkills\nPython, Machine Learning, Deep Learning, NLP, PyTorch, spaCy, SQL, Docker, AWS"}
+    Example:
+    JSON-Body:
+    {
+      "text": "Summary ... Experience ... Education ... Skills ..."
+    }
     """
     data = request.get_json(silent=True) or {}
     text = data.get("text", "")
@@ -116,7 +174,6 @@ def debug_extract_text():
         "profile": profile,
         "feedback": feedback,
     })
-
 
 
 if __name__ == "__main__":
